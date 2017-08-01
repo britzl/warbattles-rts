@@ -125,7 +125,7 @@ nodes {
 nodes {
   position {
     x: -104.0
-    y: 2.434
+    y: 7.664
     z: 0.0
     w: 1.0
   }
@@ -155,7 +155,8 @@ nodes {
   }
   type: TYPE_TEXT
   blend_mode: BLEND_MODE_ALPHA
-  text: "1 = Barracks 2 = Refinery"
+  text: "1 = Barracks 2 = Heliport 3 = Factory\n"
+  "Double-click building to construct unit"
   font: "text"
   id: "message"
   xanchor: XANCHOR_NONE

@@ -33,6 +33,19 @@ local BUILDINGS = {
 			cost = 10,
 		},
 	},
+	heliport = {
+		create = {
+			type = hash("factory"),
+			animation = hash("heliport-idle"),
+			construction_time = 4,
+			cost = 10,
+		},
+		produce = {
+			unit = "helicopter",
+			production_time = 10,
+			cost = 10,
+		},
+	},
 	refinery = {
 		create = {
 			type = hash("refinery"),
@@ -56,6 +69,13 @@ local UNITS = {
 		speed = 1,
 		create = {
 			type = hash("tank"),
+			cost = 50,
+		},
+	},
+	helicopter = {
+		speed = 4,
+		create = {
+			type = hash("helicopter"),
 			cost = 50,
 		},
 	},
@@ -321,7 +341,7 @@ function on_input(self, action_id, action)
 	elseif action_id == hash("build1") and action.released then
 		state_transition(self, self.states.PLACE_BUILDING, { type = "barracks"})
 	elseif action_id == hash("build2") and action.released then
-		state_transition(self, self.states.PLACE_BUILDING, { type = "refinery"})
+		state_transition(self, self.states.PLACE_BUILDING, { type = "heliport"})
 	elseif action_id == hash("build3") and action.released then
 		state_transition(self, self.states.PLACE_BUILDING, { type = "factory"})
 	elseif action_id == hash("cancel") and action.released then
