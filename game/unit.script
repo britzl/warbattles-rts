@@ -1,0 +1,40 @@
+go.property("type", hash(""))
+
+local ANIMATIONS = {}
+
+local UNITS = { "infantry", "medic", "worker", "elite-soldier", "tank", "helicopter", "vehicle" }
+local DIRECTIONS = { "n", "ne", "e", "se", "s", "sw", "w", "nw" }
+
+for _,unit in ipairs(UNITS) do
+	local id = hash(unit)
+	ANIMATIONS[id] = {}
+	for _,dir in ipairs(DIRECTIONS) do
+		ANIMATIONS[id][dir] = hash(unit .. "-" .. dir)
+	end
+end
+
+function init(self)
+	msg.post("#sprite", "play_animation", { id = ANIMATIONS[self.type]["n"] })
+	msg.post("#selection", "disable")
+end
+
+function on_message(self, message_id, message, sender)
+	if message_id == hash("select") then
+		msg.post("#selection", "enable")
+	elseif message_id == hash("deselect") then
+		msg.post("#selection", "disable")	
+	elseif message_id == hash("moving") then
+		local from = go.get_position()
+		local to = message.to
+		local dir = vmath.normalize(to - from)
+		if dir.x < -0.8 then msg.post("#sprite", "play_animation", { id = ANIMATIONS[self.type]["w"] })
+		elseif dir.x > 0.8 then msg.post("#sprite", "play_animation", { id = ANIMATIONS[self.type]["e"] })
+		elseif dir.y > 0.8 then msg.post("#sprite", "play_animation", { id = ANIMATIONS[self.type]["n"] })
+		elseif dir.y < -0.8 then msg.post("#sprite", "play_animation", { id = ANIMATIONS[self.type]["s"] })
+		elseif dir.x > 0.6 and dir.y > 0.6 then msg.post("#sprite", "play_animation", { id = ANIMATIONS[self.type]["ne"] })
+		elseif dir.x > 0.6 and dir.y < -0.6 then msg.post("#sprite", "play_animation", { id = ANIMATIONS[self.type]["se"] })
+		elseif dir.x < -0.6 and dir.y > 0.6 then msg.post("#sprite", "play_animation", { id = ANIMATIONS[self.type]["nw"] })
+		elseif dir.x < -0.6 and dir.y < -0.6 then msg.post("#sprite", "play_animation", { id = ANIMATIONS[self.type]["sw"] })
+		end
+	end
+end

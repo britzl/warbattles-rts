@@ -1,0 +1,30 @@
+go.property("ready", false)
+go.property("type", hash(""))
+go.property("animation", hash(""))
+go.property("construction_time", 0)
+
+go.property("production_timer", 0)
+
+function init(self)
+	msg.post("#sprite", "play_animation", { id = hash("under-construction-start") })
+	msg.post("#selection", "disable")
+	go.animate("#", "construction_time", go.PLAYBACK_ONCE_FORWARD, 0, go.EASING_LINEAR, self.construction_time, 0, function()
+		msg.post("#sprite", "play_animation", { id = hash("under-construction-end") })
+	end)
+end
+
+function on_message(self, message_id, message, sender)
+	if message_id == hash("animation_done") then
+		if message.id == hash("under-construction-start") then
+			msg.post("#sprite", "play_animation", { id = hash("under-construction-idle") })
+		elseif message.id == hash("under-construction-end") then
+			msg.post("#sprite", "play_animation", { id = self.animation })
+			msg.post("/game", "building_ready", { id = go.get_id() })
+			self.ready = true
+		end
+	elseif message_id == hash("select") then
+		msg.post("#selection", "enable")
+	elseif message_id == hash("deselect") then
+		msg.post("#selection", "disable")	
+	end
+end

@@ -1,0 +1,337 @@
+local camera = require "orthographic.camera"
+
+local SCROLL_HORIZONTAL_THRESHOLD = 100
+local SCROLL_VERTICAL_THRESHOLD = 100
+local DISPLAY_WIDTH = tonumber(sys.get_config("display.width"))
+local DISPLAY_HEIGHT = tonumber(sys.get_config("display.height"))
+local TILE_SIZE = 16
+
+local BUILDINGS = {
+	barracks = {
+		create = {
+			type = hash("barracks"),
+			animation = hash("barracks-idle"),
+			construction_time = 4,
+			cost = 10,
+		},
+		produce = {
+			unit = "infantry",
+			production_time = 10,
+			cost = 10,
+		},
+	},
+	factory = {
+		create = {
+			type = hash("factory"),
+			animation = hash("factory-idle"),
+			construction_time = 4,
+			cost = 10,
+		},
+		produce = {
+			unit = "tank",
+			production_time = 10,
+			cost = 10,
+		},
+	},
+	refinery = {
+		create = {
+			type = hash("refinery"),
+			animation = hash("refinery-idle"),
+			construction_time = 4,
+			cost = 50,
+		},
+	},
+}
+
+
+local UNITS = {
+	infantry = {
+		speed = 2,
+		create = {
+			type = hash("infantry"),
+			cost = 5,
+		},
+	},
+	tank = {
+		speed = 1,
+		create = {
+			type = hash("tank"),
+			cost = 50,
+		},
+	},
+}
+
+local function walk_path(self, unit)
+	local pos = go.get_position(unit.id)
+	local step = table.remove(unit.path, 1)
+	if step then
+		local to = pos + step
+		msg.post(unit.id, "moving", { to = to })
+		go.animate(unit.id, "position", go.PLAYBACK_ONCE_FORWARD, to, go.EASING_LINEAR, 1 / unit.data.speed, 0, function()
+			walk_path(self, unit)
+		end)
+	end
+end
+
+
+local function state_transition(self, state, data)
+	print("state_transition", self.state and self.state.name or "none", "-->", state.name)
+	if self.state and self.state.exit then
+		self.state.exit(self)
+	end
+	self.state = state
+	if self.state.enter then
+		self.state.enter(self, data)
+	end
+end
+
+
+--
+-- create a table with all of the states
+-- each state is represented by a table containing
+-- state functions for enter, exit, update etc
+--
+local function create_states(self)
+	self.states = {}
+
+	self.states.PLACE_BUILDING = (function()
+		local state = { name = "place building" }
+		
+		function state.enter(self, data)
+			self.data = data
+			msg.post("#placementsprite", "enable")
+			msg.post("#placementcollisionobject", "enable")
+			msg.post("#cursorcollisionobject", "disable")
+		end
+		function state.exit(self)
+			msg.post("#placementsprite", "disable")
+			msg.post("#placementcollisionobject", "disable")
+			msg.post("#cursorcollisionobject", "enable")
+		end
+		function state.update(self, dt)
+			if self.collision_message then
+				sprite.set_constant("#placementsprite", "tint", vmath.vector4(1, 0, 0, 1))
+			else
+				sprite.set_constant("#placementsprite", "tint", vmath.vector4(1, 1, 1, 1))
+			end
+		end
+		function state.on_touch(self, world)
+			if not self.collision_message then
+				msg.post("#", "construct_building", { type = self.data.type, position = world })
+				state_transition(self, self.states.IDLE)
+			end		
+		end
+		
+		return state
+	end)()
+
+	self.states.SELECTED_UNIT = (function()
+		local state = { name = "selected unit" }	
+
+		local unit
+		
+		function state.enter(self, data)
+			unit = self.units[data.id]
+			msg.post(unit.id, "select")
+		end
+		
+		function state.exit(self)
+			msg.post(unit.id, "deselect")
+		end
+
+		function state.on_touch(self, world)
+			if self.collision_message and self.collision_message.group == hash("building") then
+				state_transition(self, self.states.SELECTED_BUILDING, { id = self.collision_message.other_id })
+			elseif self.collision_message and self.collision_message.group == hash("unit") then
+				state_transition(self, self.states.SELECTED_UNIT, { id = self.collision_message.other_id })
+			else
+				--
+				-- TODO: proper path finding
+				--
+				local pos = go.get_world_position(unit.id)
+				local distance = vmath.length(world - pos)
+				local direction = vmath.normalize(world - pos)
+				local steps = 1 + math.floor(distance / TILE_SIZE)
+				local path = {}
+				for i=1,steps do
+					path[i] = direction * TILE_SIZE
+				end
+				unit.path = path
+				walk_path(self, unit)
+			end
+		end
+		
+		return state
+	end)()
+
+	self.states.SELECTED_BUILDING = (function()
+		local state = { name = "selected building" }
+		
+		local building
+		
+		function state.enter(self, data)
+			building = self.buildings[data.id]
+			if building.ready then
+				msg.post(building.id, "select")
+			else
+				state_transition(self, self.states.IDLE)
+			end
+		end
+		
+		function state.exit(self)
+			msg.post(building.id, "deselect")
+		end
+		
+		function state.on_touch(self, world)
+			if self.collision_message and self.collision_message.group == hash("building") then
+				if building.id == self.collision_message.other_id then
+					local position = go.get_position(building.id) + vmath.vector3(0, 50, 0)
+					msg.post("#", "produce_unit", { type = building.data.produce.unit, position = position })
+				else
+					state_transition(self, self.states.SELECTED_BUILDING, { id = self.collision_message.other_id })
+				end
+			elseif self.collision_message and self.collision_message.group == hash("unit") then
+				state_transition(self, self.states.SELECTED_UNIT, { id = self.collision_message.other_id })
+			else
+				state_transition(self, self.states.IDLE)
+			end
+		end
+		
+		return state
+	end)()
+
+	self.states.IDLE = (function()
+		local state = { name = "idle" }
+		
+		function state.on_touch(self, world)
+			if self.collision_message and self.collision_message.group == hash("building") then
+				state_transition(self, self.states.SELECTED_BUILDING, { id = self.collision_message.other_id })
+			elseif self.collision_message and self.collision_message.group == hash("unit") then
+				state_transition(self, self.states.SELECTED_UNIT, { id = self.collision_message.other_id })
+			end
+		end
+		
+		return state
+	end)()
+
+	self.states.START_GAME = (function()
+		local state = { name = "start game" }
+
+		function state.enter(self)
+			msg.post("#", "construct_building", { type = "refinery", position = vmath.vector3(95, 130, 9) })
+		end
+		
+		function state.update(self, dt)
+			state_transition(self, self.states.IDLE)
+		end
+		
+		return state
+	end)()
+end
+
+
+
+function init(self)
+	msg.post(".", "acquire_input_focus")
+	msg.post("#", "setup")
+	self.camera_id = go.get_id("/camera")
+	self.cursor_pos = vmath.vector3(0, 0, 0)
+	self.camera_velocity = vmath.vector3(0, 0, 0)
+	
+	self.buildings = {}
+	self.units = {}
+	
+	self.money = 0
+	
+	self.map = {}
+	local x, y, w, h = tilemap.get_bounds("/map#map")
+	for xi=x,x+w-1 do
+		self.map[xi] = {}
+		for yi=y,y+h-1 do
+			local tile = tilemap.get_tile("/map#map", hash("blockers"), xi, yi)
+			self.map[xi][yi] = tile
+		end	
+	end	
+	
+	create_states(self)
+	state_transition(self, self.states.START_GAME)
+end
+
+
+function update(self, dt)
+	local camera_pos = go.get_position(self.camera_id)
+	camera_pos = camera_pos + self.camera_velocity * 200 * dt
+	go.set_position(camera_pos, self.camera_id)
+	go.set_position(vmath.lerp(0.3, go.get_position(), self.cursor_pos))
+	
+	if self.state.update then
+		self.state.update(self, dt)
+	end
+
+	-- reset volatile state
+	self.collision_message = nil
+end
+
+function on_message(self, message_id, message, sender)
+	if message_id == hash("setup") then
+		camera.bounds(self.camera_id, 0,1408, 2272, 0)
+		msg.post("#placementsprite", "disable")
+		msg.post("#placementcollisionobject", "disable")
+	elseif message_id == hash("construct_building") then
+		local id = factory.create("/factories#building", message.position, nil, BUILDINGS[message.type].create)
+		self.buildings[id] = { id = id, type = message.type, ready = false, data = BUILDINGS[message.type] }
+	elseif message_id == hash("produce_unit") then
+		local id = factory.create("/factories#unit", message.position, nil, UNITS[message.type].create)
+		self.units[id] = { id = id, type = message.type, data = UNITS[message.type], target = go.get_position(id) }
+	elseif message_id == hash("building_ready") then
+		self.buildings[message.id].ready = true
+	elseif message_id == hash("collision_response") then
+		self.collision_message = message
+	end
+end
+
+
+function on_input(self, action_id, action)
+	local screen = vmath.vector3(action.x, action.y, 0)
+	local world = camera.screen_to_world(self.camera_id, screen)
+	if not action_id then
+		--
+		-- scroll when mouse is near or outside window edges
+		--
+		if screen.x < SCROLL_HORIZONTAL_THRESHOLD then
+			self.camera_velocity.x = (screen.x - SCROLL_HORIZONTAL_THRESHOLD) / 200
+		elseif screen.x > (DISPLAY_WIDTH - SCROLL_HORIZONTAL_THRESHOLD) then
+			self.camera_velocity.x = (screen.x - (DISPLAY_WIDTH - SCROLL_HORIZONTAL_THRESHOLD)) / 200
+		else
+			self.camera_velocity.x = 0
+		end
+		if screen.y < SCROLL_VERTICAL_THRESHOLD then
+			self.camera_velocity.y = (screen.y - SCROLL_VERTICAL_THRESHOLD) / 200
+		elseif screen.y > (DISPLAY_HEIGHT - SCROLL_VERTICAL_THRESHOLD) then
+			self.camera_velocity.y = (screen.y - (DISPLAY_HEIGHT - SCROLL_VERTICAL_THRESHOLD)) / 200
+		else
+			self.camera_velocity.y = 0
+		end
+		
+		self.cursor_pos = world
+	elseif action_id == hash("touch") and action.released then
+		if self.state.on_touch then
+			self.state.on_touch(self, world)
+		end
+	elseif action_id == hash("build1") and action.released then
+		state_transition(self, self.states.PLACE_BUILDING, { type = "barracks"})
+	elseif action_id == hash("build2") and action.released then
+		state_transition(self, self.states.PLACE_BUILDING, { type = "refinery"})
+	elseif action_id == hash("build3") and action.released then
+		state_transition(self, self.states.PLACE_BUILDING, { type = "factory"})
+	elseif action_id == hash("cancel") and action.released then
+		state_transition(self, self.states.IDLE)
+	end
+end
+
+
+function on_reload(self)
+	-- recreate states if code is hot-reloaded
+	create_states(self)
+	state_transition(self, self.states.IDLE)
+end

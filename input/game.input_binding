@@ -1,0 +1,20 @@
+key_trigger {
+  input: KEY_1
+  action: "build1"
+}
+key_trigger {
+  input: KEY_ESC
+  action: "cancel"
+}
+key_trigger {
+  input: KEY_2
+  action: "build2"
+}
+key_trigger {
+  input: KEY_3
+  action: "build3"
+}
+mouse_trigger {
+  input: MOUSE_BUTTON_1
+  action: "touch"
+}
