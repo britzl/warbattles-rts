@@ -1,6 +1,6 @@
 [project]
 title = Warbattles-RTS
-dependencies = https://github.com/britzl/defold-orthographic/archive/1.2.zip
+dependencies#0 = https://github.com/britzl/defold-orthographic/archive/1.2.zip
 
 [bootstrap]
 main_collection = /game/game.collectionc
@@ -55,4 +55,7 @@ default_texture_mag_filter = nearest
 
 [physics]
 debug = 0
+
+[tilemap]
+max_tile_count = 16384
 
