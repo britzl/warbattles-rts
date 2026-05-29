@@ -2,8 +2,8 @@ local camera = require "orthographic.camera"
 
 local SCROLL_HORIZONTAL_THRESHOLD = 100
 local SCROLL_VERTICAL_THRESHOLD = 100
-local DISPLAY_WIDTH = tonumber(sys.get_config("display.width"))
-local DISPLAY_HEIGHT = tonumber(sys.get_config("display.height"))
+local DISPLAY_WIDTH = sys.get_config_int("display.width")
+local DISPLAY_HEIGHT = sys.get_config_int("display.height")
 local TILE_SIZE = 16
 
 local BUILDINGS = {
@@ -125,9 +125,9 @@ STATES.PLACE_BUILDING = (function()
 	end
 	function state.update(self, dt)
 		if self.collision_message then
-			sprite.set_constant("#placementsprite", "tint", vmath.vector4(1, 0, 0, 1))
+			go.set("#placementsprite", "tint", vmath.vector4(1, 0, 0, 1))
 		else
-			sprite.set_constant("#placementsprite", "tint", vmath.vector4(1, 1, 1, 1))
+			go.set("#placementsprite", "tint", vmath.vector4(1, 1, 1, 1))
 		end
 	end
 	function state.on_touch(self, world)
